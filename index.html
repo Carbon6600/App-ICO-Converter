@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PNG to Multi-Size ICO Converter with Preview</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e24;
+            color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background-color: #2a2a35;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 550px;
+            width: 100%;
+        }
+        h2 { color: #4ade80; margin-top: 0; }
+        .drop-zone {
+            border: 2px dashed #4ade80;
+            border-radius: 8px;
+            padding: 30px 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+            background: #22222b;
+        }
+        .drop-zone:hover { background: #2d2d39; }
+        input[type="file"] { display: none; }
+        
+        /* Блок прев'ю */
+        .preview-box {
+            margin-top: 25px;
+            background: #1a1a22;
+            border-radius: 8px;
+            padding: 15px;
+            display: none;
+        }
+        .preview-title {
+            font-size: 14px;
+            color: #4ade80;
+            margin-bottom: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .preview-grid {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            gap: 10px;
+        }
+        .preview-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 12px;
+            color: #a1a1aa;
+        }
+        .img-wrapper {
+            background: #2a2a35;
+            border: 1px solid #3f3f46;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+            background-image: repeating-conic-gradient(#333 0% 25%, #222 0% 50%);
+            background-size: 8px 8px; /* Шаховий фон для перевірки прозорості */
+        }
+        
+        button {
+            background-color: #4ade80;
+            color: #111;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 20px;
+            display: none;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #22c55e; }
+        #status { margin-top: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Starlink App ICO Converter</h2>
+    <p>Закинь картинку, щоб запакувати її в .ico з шарами 16x16, 32x32, 48x48 та 256x256.</p>
+    
+    <div class="drop-zone" id="dropZone">
+        <p>Перетягни сюди PNG/JPG або клікни для вибору</p>
+        <input type="file" id="fileInput" accept="image/png, image/jpeg">
+    </div>
+    
+    <div id="status"></div>
+
+    <div class="preview-box" id="previewBox">
+        <div class="preview-title">Вміст згенерованого файлу ICO:</div>
+        <div class="preview-grid" id="previewGrid"></div>
+    </div>
+    
+    <button id="downloadBtn">Скачати app.ico</button>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const downloadBtn = document.getElementById('downloadBtn');
+const status = document.getElementById('status');
+const previewBox = document.getElementById('previewBox');
+const previewGrid = document.getElementById('previewGrid');
+
+let generatedIcoBlob = null;
+const targetSizes = [16, 32, 48, 256];
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#22c55e'; });
+dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#4ade80'; });
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#4ade80';
+    if (e.dataTransfer.files.length > 0) processImage(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) processImage(e.target.files[0]);
+});
+
+async function processImage(file) {
+    status.style.color = '#eab308';
+    status.innerText = "Обробка, ресайз та генерація шарів...";
+    downloadBtn.style.display = 'none';
+    previewBox.style.display = 'none';
+    previewGrid.innerHTML = ''; // очищуємо старе прев'ю
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    
+    img.onload = async () => {
+        try {
+            const pngBuffers = [];
+            const previewUrls = [];
+            
+            for (let size of targetSizes) {
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, size, size);
+                
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                
+                // Зберігаємо посилання для виведення на екран у прев'ю
+                previewUrls.push(URL.createObjectURL(blob));
+                
+                const buffer = await blob.arrayBuffer();
+                pngBuffers.push(new Uint8Array(buffer));
+            }
+            
+            // Збираємо бінарний ICO
+            generatedIcoBlob = createIcoContainer(pngBuffers);
+            
+            // Відображаємо шари на екрані
+            renderPreview(previewUrls);
+            
+            status.style.color = '#4ade80';
+            status.innerText = "Генерація успішна! Всі шари спаковано.";
+            downloadBtn.style.display = 'block';
+        } catch (err) {
+            status.style.color = '#ef4444';
+            status.innerText = "Помилка: " + err.message;
+        }
+    };
+}
+
+function renderPreview(urls) {
+    targetSizes.forEach((size, index) => {
+        const item = document.createElement('div');
+        item.className = 'preview-item';
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'img-wrapper';
+        // Робимо рамку трохи більшою за саму картинку для зручності перегляду малих іконок
+        wrapper.style.width = `${Math.max(size, 32) + 10}px`;
+        wrapper.style.height = `${Math.max(size, 32) + 10}px`;
+        
+        const previewImg = document.createElement('img');
+        previewImg.src = urls[index];
+        previewImg.style.width = `${size}px`;
+        previewImg.style.height = `${size}px`;
+        
+        wrapper.appendChild(previewImg);
+        item.appendChild(wrapper);
+        
+        const label = document.createElement('span');
+        label.innerText = `${size}x${size}`;
+        item.appendChild(label);
+        
+        previewGrid.appendChild(item);
+    });
+    previewBox.style.display = 'block';
+}
+
+function createIcoContainer(pngBuffers) {
+    const numImages = pngBuffers.length;
+    const headerSize = 6 + (numImages * 16);
+    let totalSize = headerSize;
+    for (let buf of pngBuffers) totalSize += buf.byteLength;
+    
+    const icoBuffer = new ArrayBuffer(totalSize);
+    const view = new DataView(icoBuffer);
+    const uint8Bytes = new Uint8Array(icoBuffer);
+    
+    view.setUint16(0, 0, true);
+    view.setUint16(2, 1, true);
+    view.setUint16(4, numImages, true);
+    
+    let currentOffset = headerSize;
+    for (let i = 0; i < numImages; i++) {
+        const size = targetSizes[i];
+        const buf = pngBuffers[i];
+        const entryOffset = 6 + (i * 16);
+        
+        view.setUint8(entryOffset, size === 256 ? 0 : size);
+        view.setUint8(entryOffset + 1, size === 256 ? 0 : size);
+        view.setUint8(entryOffset + 2, 0);
+        view.setUint8(entryOffset + 3, 0);
+        view.setUint16(entryOffset + 4, 1, true);
+        view.setUint16(entryOffset + 6, 32, true);
+        view.setUint32(entryOffset + 8, buf.byteLength, true);
+        view.setUint32(entryOffset + 12, currentOffset, true);
+        
+        uint8Bytes.set(buf, currentOffset);
+        currentOffset += buf.byteLength;
+    }
+    return new Blob([icoBuffer], { type: 'image/x-icon' });
+}
+
+downloadBtn.addEventListener('click', () => {
+    if (!generatedIcoBlob) return;
+    const url = URL.createObjectURL(generatedIcoBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'app.ico';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>
